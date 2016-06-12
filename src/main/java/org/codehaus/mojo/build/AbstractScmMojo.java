@@ -147,7 +147,7 @@ public abstract class AbstractScmMojo
     private SecDispatcher securityDispatcher;
 
     /**
-     * Load username password from settings if user has not set them in JVM properties
+     * Load username password from settings.
      */
     private void loadInfosFromSettings( ScmProviderRepositoryWithHost repo )
     {
@@ -166,15 +166,9 @@ public abstract class AbstractScmMojo
 
             if ( server != null )
             {
-                if ( username == null )
-                {
-                    username = server.getUsername();
-                }
+                setPasswordIfNotEmpty( repo, decrypt( server.getPassword(), host ) );
 
-                if ( password == null )
-                {
-                    password = decrypt( server.getPassword(), host );
-                }
+                setUserIfNotEmpty( repo, server.getUsername() );
             }
         }
     }
@@ -201,34 +195,32 @@ public abstract class AbstractScmMojo
 
         ScmProviderRepository scmRepo = repository.getProviderRepository();
 
-        if ( !StringUtils.isEmpty( username ) )
+        if ( scmRepo instanceof ScmProviderRepositoryWithHost )
         {
-            scmRepo.setUser( username );
+            loadInfosFromSettings( (ScmProviderRepositoryWithHost) scmRepo );
         }
 
+        setPasswordIfNotEmpty( scmRepo, password );
+
+        setUserIfNotEmpty( scmRepo, username );
+
+        return repository;
+    }
+
+    private void setPasswordIfNotEmpty( ScmProviderRepository repository, String password )
+    {
         if ( !StringUtils.isEmpty( password ) )
         {
-            scmRepo.setPassword( password );
+            repository.setPassword( password );
         }
+    }
 
-        if ( repository.getProviderRepository() instanceof ScmProviderRepositoryWithHost )
+    private void setUserIfNotEmpty( ScmProviderRepository repository, String user )
+    {
+        if ( !StringUtils.isEmpty( user ) )
         {
-            ScmProviderRepositoryWithHost repo = (ScmProviderRepositoryWithHost) repository.getProviderRepository();
-
-            loadInfosFromSettings( repo );
-
-            if ( !StringUtils.isEmpty( username ) )
-            {
-                repo.setUser( username );
-            }
-
-            if ( !StringUtils.isEmpty( password ) )
-            {
-                repo.setPassword( password );
-            }
-
+            repository.setUser( user );
         }
-        return repository;
     }
 
     protected void checkResult( ScmResult result )

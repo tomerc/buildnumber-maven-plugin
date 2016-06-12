@@ -46,6 +46,7 @@ import org.apache.maven.project.MavenProject;
 import org.apache.maven.scm.ScmException;
 import org.apache.maven.scm.ScmFile;
 import org.apache.maven.scm.ScmFileSet;
+import org.apache.maven.scm.ScmResult;
 import org.apache.maven.scm.command.info.InfoItem;
 import org.apache.maven.scm.command.info.InfoScmResult;
 import org.apache.maven.scm.command.status.StatusScmResult;
@@ -57,9 +58,14 @@ import org.apache.maven.scm.manager.ScmManager;
 import org.apache.maven.scm.provider.ScmProvider;
 import org.apache.maven.scm.provider.git.gitexe.command.branch.GitBranchCommand;
 import org.apache.maven.scm.provider.git.repository.GitScmProviderRepository;
+import org.apache.maven.scm.provider.hg.HgScmProvider;
+import org.apache.maven.scm.provider.hg.HgUtils;
 import org.apache.maven.scm.repository.ScmRepository;
 import org.codehaus.plexus.util.IOUtil;
 import org.codehaus.plexus.util.StringUtils;
+
+import static java.lang.Boolean.parseBoolean;
+import static java.lang.Integer.parseInt;
 
 /**
  * This mojo is designed to give you a build number. So when you might make 100 builds of version 1.0-SNAPSHOT, you can
@@ -179,7 +185,7 @@ public class CreateMojo
     /**
      * Selects alternative SCM provider implementations. Each map key denotes the original provider type as given in the
      * SCM URL like "cvs" or "svn", the map value specifies the provider type of the desired implementation to use
-     * instead. In other words, this map configures a substitition mapping for SCM providers.
+     * instead. In other words, this map configures a substitution mapping for SCM providers.
      *
      * @since 1.0-beta-3
      */
@@ -310,7 +316,7 @@ public class CreateMojo
                             {
                                 buildNumberString = "0";
                             }
-                            int buildNumber = Integer.valueOf( buildNumberString ).intValue();
+                            int buildNumber = parseInt( buildNumberString );
 
                             // store the increment
                             properties.setProperty( s, String.valueOf( ++buildNumber ) );
@@ -564,18 +570,26 @@ public class CreateMojo
     public String getScmBranch()
         throws MojoExecutionException
     {
-        /* git branch can be obtained directly by a command */
         try
         {
             ScmRepository repository = getScmRepository();
             ScmProvider provider = scmManager.getProviderByRepository( repository );
+            /* git branch can be obtained directly by a command */
             if ( GitScmProviderRepository.PROTOCOL_GIT.equals( provider.getScmType() ) )
             {
                 ScmFileSet fileSet = new ScmFileSet( scmDirectory );
                 return GitBranchCommand.getCurrentBranch( getLogger(),
                                                           (GitScmProviderRepository) repository.getProviderRepository(),
                                                           fileSet );
-            }
+            } else if ( provider instanceof HgScmProvider ) {
+                /* hg branch can be obtained directly by a command */
+                HgOutputConsumer consumer = new HgOutputConsumer( getLogger() );
+ 		        ScmResult result = HgUtils.execute( consumer, logger, scmDirectory, new String[] { "id", "-b" } );
+		        checkResult( result );
+		        if (StringUtils.isNotEmpty(consumer.getOutput())) {
+		        	return consumer.getOutput();	
+		        }
+	         }
         }
         catch ( ScmException e )
         {
@@ -644,7 +658,7 @@ public class CreateMojo
         }
         else if ( StringUtils.contains( scmUrl, "/branches" ) || StringUtils.contains( scmUrl, "/tags" ) )
         {
-            scmBranch = scmUrl.replaceFirst( ".*((branches|tags)[^/]*).*?", "$1" );
+            scmBranch = scmUrl.replaceFirst( ".*((branches|tags)/[^/]*).*", "$1" );
         }
         return scmBranch;
     }
@@ -726,29 +740,23 @@ public class CreateMojo
 
     public void setDoCheck( boolean doCheck )
     {
-        String doCheckSystemProperty = System.getProperty( "maven.buildNumber.doCheck" );
-        if ( doCheckSystemProperty != null )
-        {
-            // well, this gets the final say
-            this.doCheck = Boolean.valueOf( doCheckSystemProperty ).booleanValue();
-        }
-        else
-        {
-            this.doCheck = doCheck;
-        }
+        this.doCheck = getBooleanProperty( "maven.buildNumber.doCheck", doCheck );
     }
 
     public void setDoUpdate( boolean doUpdate )
     {
-        String doUpdateSystemProperty = System.getProperty( "maven.buildNumber.doUpdate" );
-        if ( doUpdateSystemProperty != null )
+        this.doUpdate = getBooleanProperty( "maven.buildNumber.doUpdate", doUpdate );
+    }
+
+    private boolean getBooleanProperty( String key, boolean defaultValue ) {
+        String systemProperty = System.getProperty( key );
+        if (systemProperty == null)
         {
-            // well, this gets the final say
-            this.doUpdate = Boolean.valueOf( doUpdateSystemProperty ).booleanValue();
+            return defaultValue;
         }
         else
         {
-            this.doUpdate = doUpdate;
+            return parseBoolean( systemProperty );
         }
     }
 
